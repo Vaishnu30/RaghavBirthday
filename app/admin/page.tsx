@@ -1,40 +1,21 @@
 'use client'
 
-import { useState } from 'react'
-import { Upload, LockKeyhole, Save, LogOut } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import type { Session, User } from '@supabase/supabase-js'
+import { Camera, FileText, Film, Heart, ImagePlus, LogOut, Plus, Save, ShieldCheck, Sparkles, Users } from 'lucide-react'
 
-const sections = ['Profile', 'Milestones', 'Gallery', 'Favorites', 'Letters', 'Videos', 'Birthday', 'Family', 'Timeline']
+const sections = [
+  { key: 'photos', label: 'Photos', icon: Camera, table: 'photos' }, { key: 'milestones', label: 'Milestones', icon: Sparkles, table: 'milestones' }, { key: 'letters', label: 'Letters', icon: FileText, table: 'letters' }, { key: 'family', label: 'Family', icon: Users, table: 'family_members' }, { key: 'videos', label: 'Videos', icon: Film, table: 'videos' }, { key: 'birthday', label: 'Birthday', icon: Heart, table: 'birthday' }, { key: 'funny', label: 'Funny memories', icon: Sparkles, table: 'funny_memories' }, { key: 'timeline', label: 'Timeline', icon: ImagePlus, table: 'chapters' },
+]
 
 export default function AdminPage() {
-  const [authenticated, setAuthenticated] = useState(false)
-  const [secret, setSecret] = useState('')
-  const [active, setActive] = useState('Profile')
-  const [message, setMessage] = useState('')
-  const [uploading, setUploading] = useState(false)
-  const [fields, setFields] = useState({ name: 'Raghav', birthday: '20th October 2025', location: 'Dharashiv', parents: 'Pranjali Tambe, Amar Tambe', theme: '[Birthday theme]' })
-
-  async function unlock(event: React.FormEvent) {
-    event.preventDefault()
-    const response = await fetch('/api/admin/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret }) })
-    if (response.ok) setAuthenticated(true)
-    else setMessage('That secret did not unlock the editor.')
-  }
-
-  async function upload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
-    setUploading(true); setMessage('Uploading your memory...')
-    const body = new FormData(); body.append('file', file); body.append('label', `${active} upload`); body.append('section', active)
-    const response = await fetch('/api/admin/upload', { method: 'POST', body })
-    setUploading(false); setMessage(response.ok ? 'Uploaded. Your memory is safely stored.' : 'Upload failed. Please try again.')
-  }
-
-  async function save() {
-    const response = await fetch('/api/admin/content', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug: 'raghav', content: fields }) })
-    setMessage(response.ok ? 'Saved to the capsule.' : 'Could not save changes.')
-  }
-
-  if (!authenticated) return <main className="admin-gate"><form onSubmit={unlock} className="admin-login"><span className="eyebrow">Private editor</span><LockKeyhole size={30} /><h1>Open the memory book</h1><p>Enter the shared secret to add photos and update Raghav&apos;s capsule.</p><input aria-label="Shared secret" type="password" value={secret} onChange={e => setSecret(e.target.value)} placeholder="Shared secret" required /><button type="submit">Unlock editor</button>{message && <small>{message}</small>}</form></main>
-
-  return <main className="admin-shell"><header className="admin-header"><div><span className="eyebrow">Raghav&apos;s time capsule</span><h1>Memory book editor</h1></div><button className="admin-logout" onClick={() => setAuthenticated(false)}><LogOut size={16} /> Lock</button></header><div className="admin-layout"><aside className="admin-sidebar"><p>Sections</p>{sections.map(section => <button className={active === section ? 'selected' : ''} key={section} onClick={() => setActive(section)}>{section}</button>)}</aside><section className="admin-content"><div className="admin-toolbar"><div><span className="eyebrow">Editing {active}</span><h2>Keep the story growing</h2></div><button onClick={save}><Save size={16} /> Save changes</button></div>{active === 'Profile' || active === 'Birthday' ? <div className="editor-form">{Object.entries(fields).map(([key, value]) => <label key={key}>{key.replace(/([A-Z])/g, ' $1')}<input value={value} onChange={e => setFields({ ...fields, [key]: e.target.value })} /></label>)}</div> : <div className="upload-panel"><Upload size={34} /><h3>Add {active.toLowerCase()} memories</h3><p>Choose a photo or video placeholder to add it to this chapter. The public capsule will use this private media bucket.</p><label className="upload-button">{uploading ? 'Uploading...' : 'Choose file'}<input type="file" accept="image/*,video/*" onChange={upload} disabled={uploading} /></label></div>}{message && <p className="admin-message" role="status">{message}</p>}</section></div></main>
+  const supabase = createClient(); const [user, setUser] = useState<User | null>(null); const [loading, setLoading] = useState(true); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [active, setActive] = useState(sections[0]); const [rows, setRows] = useState<any[]>([]); const [saving, setSaving] = useState(false)
+  useEffect(() => { supabase.auth.getUser().then(({ data }: { data: { user: User | null } }) => { setUser(data.user); setLoading(false) }); const { data } = supabase.auth.onAuthStateChange((_event: string, session: Session | null) => setUser(session?.user ?? null)); return () => data.subscription.unsubscribe() }, [supabase])
+  useEffect(() => { if (!user) return; supabase.from(active.table).select('*').limit(20).then(({ data }: { data: any[] | null }) => setRows(data ?? [])) }, [user, active, supabase])
+  async function signIn(e: React.FormEvent) { e.preventDefault(); setError(''); const { error } = await supabase.auth.signInWithPassword({ email, password }); if (error) setError('Invalid email or password.') }
+  async function addPlaceholder() { setSaving(true); const payload = active.key === 'milestones' ? { title: 'New milestone', description: '', sort_order: rows.length } : active.key === 'letters' ? { author: 'Family', title: 'A letter to you', message: '', published: false, sort_order: rows.length } : active.key === 'family' ? { name: 'New family member', relationship: 'Family', published: false, sort_order: rows.length } : active.key === 'chapters' ? { age: rows.length + 1, year: 2025 + rows.length + 1, title: `Age ${rows.length + 1}`, status: 'locked' } : { title: 'New memory', caption: '', published: false, sort_order: rows.length }; const { data, error } = await supabase.from(active.table).insert(payload).select().single(); if (!error && data) setRows([...rows, data]); setSaving(false) }
+  if (loading) return <main className="admin-gate"><div className="admin-login"><span className="eyebrow">Loading memory book</span><h1>Opening the archive...</h1></div></main>
+  if (!user) return <main className="admin-gate"><form onSubmit={signIn} className="admin-login"><ShieldCheck size={32} /><span className="eyebrow">Private family archive</span><h1>Open the memory book</h1><p>Sign in with an authorized family account to keep the story growing.</p><label>Email<input type="email" value={email} onChange={e => setEmail(e.target.value)} required /></label><label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} required /></label><button type="submit">Sign in</button>{error && <small>{error}</small>}</form></main>
+  return <main className="admin-shell"><header className="admin-header"><div><span className="eyebrow">Raghav&apos;s time capsule</span><h1>Memory book editor</h1></div><button className="admin-logout" onClick={() => supabase.auth.signOut()}><LogOut size={16} /> Sign out</button></header><div className="admin-layout"><aside className="admin-sidebar"><p>Manage</p>{sections.map(item => { const Icon = item.icon; return <button className={active.key === item.key ? 'selected' : ''} key={item.key} onClick={() => setActive(item)}><Icon size={16} />{item.label}</button> })}</aside><section className="admin-content"><div className="admin-toolbar"><div><span className="eyebrow">{active.label}</span><h2>Keep the story growing</h2></div><button onClick={addPlaceholder} disabled={saving}><Plus size={16} /> Add memory</button></div><div className="admin-list">{rows.length ? rows.map(row => <article key={row.id}><div><b>{row.title || row.name || row.caption || `Age ${row.age}` || 'Memory'}</b><small>{row.description || row.relationship || row.message || row.status || 'Ready to edit'}</small></div><button aria-label="Save memory" onClick={async () => { await supabase.from(active.table).update({ published: true, updated_at: new Date().toISOString() }).eq('id', row.id) }}><Save size={15} /></button></article>) : <div className="empty-admin"><Sparkles size={25} /><h3>This chapter is waiting to be written.</h3><p>Add the first {active.label.toLowerCase()} memory to begin.</p><button onClick={addPlaceholder}><Plus size={15} /> Add memory</button></div>}</div></section></div></main>
 }
