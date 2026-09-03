@@ -14,7 +14,7 @@ const milestones = [
   { icon: '06', title: 'Your favorite people', date: 'All year long', copy: 'The people who couldn’t stop taking pictures of you. We understand why.', tone: 'sage' },
 ]
 
-const gallery = [
+const defaultGallery = [
   ['Tiny hands', 'BABY / 01', 'blue'], ['Tiny feet', 'BABY / 02', 'peach'], ['First smiles', 'BABY / 03', 'sage'], ['Family', 'FAMILY / 01', 'blue'], ['Adventures', 'ADVENTURE / 01', 'peach'], ['Mischief', 'MOMENTS / 01', 'sage'], ['Sleepy moments', 'BABY / 04', 'blue'], ['Celebrations', 'BIRTHDAY / 01', 'peach'],
 ]
 const letters = ['From Mom', 'From Dad', 'From Grandma', 'From Grandpa', 'From Your Aunt', 'From Everyone Who Loves You']
@@ -35,9 +35,11 @@ function PhotoPlaceholder({ label, tone = 'blue', className = '' }: { label: str
 
 type PublicProfile = { name: string; birthday_label: string | null; location: string | null; parents: string | null }
 type PublicChapter = { age: number; year: number; title: string; status: string }
+type PublicPhoto = { title: string | null; category: string; public_url: string | null }
 
-export default function Page({ initialProfile, initialChapter }: { initialProfile?: PublicProfile | null; initialChapter?: PublicChapter | null }) {
-  const activeBaby = { ...baby, ...(initialProfile ?? {}), birthday: initialProfile?.birthday_label ?? activeBaby.birthday, year: String(initialChapter?.year ?? activeBaby.year) }
+export default function Page({ initialProfile, initialChapter, initialPhotos = [] }: { initialProfile?: PublicProfile | null; initialChapter?: PublicChapter | null; initialPhotos?: PublicPhoto[] }) {
+  const activeBaby = { ...baby, ...(initialProfile ?? {}), birthday: initialProfile?.birthday_label ?? baby.birthday, year: String(initialChapter?.year ?? baby.year) }
+  const gallery = initialPhotos.length ? initialPhotos.map((photo, index) => [photo.category, photo.title ?? `MEMORY / 0${index + 1}`, ['blue', 'peach', 'sage'][index % 3]] as const) : defaultGallery
   const [menu, setMenu] = useState(false); const [lightbox, setLightbox] = useState<number | null>(null); const [letter, setLetter] = useState<number | null>(null); const [video, setVideo] = useState<string | null>(null); const [locked, setLocked] = useState<number | null>(null)
   const [confetti, setConfetti] = useState(false)
   return <main>
