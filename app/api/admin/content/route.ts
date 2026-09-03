@@ -1,5 +1,22 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 
-function authorized(request: Request) { return request.headers.get('cookie')?.includes(`capsule_admin=${encodeURIComponent(process.env.CAPSULE_ADMIN_SECRET ?? '')}`) }
-async function supabase(path: string, init: RequestInit = {}) { return fetch(`${process.env.SUPABASE_URL}/rest/v1/${path}`, { ...init, headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates', ...init.headers } }) }
-export async function PUT(request: Request) { if (!authorized(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }); const body = await request.json(); const response = await supabase('capsule_content', { method: 'POST', body: JSON.stringify(body) }); return NextResponse.json({ ok: response.ok }, { status: response.ok ? 200 : 500 }) }
+const writableTables = new Set(['baby_profile', 'chapters', 'photos', 'milestones', 'letters', 'family_members', 'videos', 'birthday', 'funny_memories'])
+
+export async function PUT(request: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await request.json()
+  const table = typeof body.table === 'string' ? body.table : ''
+  const operation = body.operation === 'update' ? 'update' : 'insert'
+  const payload = body.payload && typeof body.payload === 'object' ? body.payload : null
+  if (!writableTables.has(table) || !payload) return NextResponse.json({ error: 'Invalid content request' }, { status: 400 })
+
+  let query = supabase.from(table).insert(payload)
+  if (operation === 'update' && typeof body.id === 'string') query = supabase.from(table).update(payload).eq('id', body.id)
+  const { error } = await query
+  if (error) return NextResponse.json({ error: 'Unable to save content' }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}
