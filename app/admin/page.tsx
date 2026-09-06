@@ -13,7 +13,41 @@ const sections = [
 
 export default function AdminPage() {
   const supabase = createClient(); const [user, setUser] = useState<User | null>(null); const [authorized, setAuthorized] = useState(false); const [loading, setLoading] = useState(true); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [active, setActive] = useState(sections[0]); const [rows, setRows] = useState<any[]>([]); const [saving, setSaving] = useState(false); const [editingId, setEditingId] = useState<string | null>(null)
-  useEffect(() => { supabase.auth.getUser().then(async ({ data }: { data: { user: User | null } }) => { setUser(data.user); if (data.user) { const { data: admin } = await supabase.from('admin_users').select('user_id').eq('user_id', data.user.id).maybeSingle(); setAuthorized(Boolean(admin)) } setLoading(false) }); const { data } = supabase.auth.onAuthStateChange((_event: string, session: Session | null) => { setUser(session?.user ?? null); if (!session?.user) setAuthorized(false) }); return () => data.subscription.unsubscribe() }, [supabase])
+  useEffect(() => {
+    let active = true
+    async function syncAdmin(user: User | null) {
+      if (!user) {
+        if (active) setAuthorized(false)
+        return
+      }
+      const { data: admin, error: adminError } = await supabase
+        .from('admin_users')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (adminError) console.log('[v0] Admin allowlist check failed:', adminError.message)
+      if (active) setAuthorized(Boolean(admin) && !adminError)
+    }
+
+    supabase.auth.getUser().then(async ({ data }: { data: { user: User | null } }) => {
+      if (!active) return
+      setUser(data.user)
+      await syncAdmin(data.user)
+      if (active) setLoading(false)
+    })
+
+    const { data } = supabase.auth.onAuthStateChange((_event: string, session: Session | null) => {
+      const nextUser = session?.user ?? null
+      setUser(nextUser)
+      void syncAdmin(nextUser)
+      if (!nextUser) setLoading(false)
+    })
+
+    return () => {
+      active = false
+      data.subscription.unsubscribe()
+    }
+  }, [supabase])
   useEffect(() => { if (!user) return; supabase.from(active.table).select('*').limit(20).then(({ data }: { data: any[] | null }) => setRows(data ?? [])) }, [user, active, supabase])
   async function signIn(e: React.FormEvent) { e.preventDefault(); setError(''); const { error } = await supabase.auth.signInWithPassword({ email, password }); if (error) setError('Invalid email or password.') }
   async function addPlaceholder() { setSaving(true); const payload = active.key === 'milestones' ? { title: 'New milestone', description: '', sort_order: rows.length } : active.key === 'letters' ? { author: 'Family', title: 'A letter to you', message: '', published: false, sort_order: rows.length } : active.key === 'family' ? { name: 'New family member', relationship: 'Family', published: false, sort_order: rows.length } : active.key === 'chapters' ? { age: rows.length + 1, year: 2025 + rows.length + 1, title: `Age ${rows.length + 1}`, status: 'locked' } : { title: 'New memory', caption: '', published: false, sort_order: rows.length }; const { data, error } = await supabase.from(active.table).insert(payload).select().single(); if (!error && data) setRows([...rows, data]); setSaving(false) }
